@@ -1,3 +1,4 @@
+
 namespace LifeShelf.Api.Models;
 
 public class Product
@@ -32,5 +33,10 @@ public class Product
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-public ICollection<UsageLog> UsageLogs { get; set; } = new List<UsageLog>();
+    public string? UserId { get; set; }
+
+    public ApplicationUser? User { get; set; }
+
+    public ICollection<UsageLog> UsageLogs { get; set; }
+        = new List<UsageLog>();
 }

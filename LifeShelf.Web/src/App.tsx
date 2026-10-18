@@ -1,5 +1,5 @@
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 
 import DashboardLayout from './layouts/DashboardLayout'
 
@@ -9,36 +9,86 @@ import AddProduct from './pages/AddProduct'
 import ProductDetails from './pages/ProductDetails'
 import EditProduct from './pages/EditProduct'
 import Settings from './pages/Settings'
-
-function Usage() {
-  return <h1>Usage</h1>
-}
-
-function Analytics() {
-  return <h1>Analytics</h1>
-}
-
-function Expiring() {
-  return <h1>Expiring</h1>
-}
+import Expiring from './pages/Expiring'
+import Login from './pages/Login'
+import Register from './pages/Register'
 
 function App() {
   return (
     <BrowserRouter>
-      <DashboardLayout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/products" element={<Products />} />
-          <Route path="/add-product" element={<AddProduct />} />
-          <Route path="/products/:id/edit" element={<EditProduct />} />
-          <Route path="/products/:id" element={<ProductDetails />} />
+      <Routes>
+        {/* Login page */}
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
 
-          <Route path="/usage" element={<Usage />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="/expiring" element={<Expiring />} />
-          <Route path="/settings" element={<Settings />} />
-        </Routes>
-      </DashboardLayout>
+        {/* Dashboard and application pages */}
+        <Route
+          path="/dashboard"
+          element={
+            <DashboardLayout>
+              <Dashboard />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/products"
+          element={
+            <DashboardLayout>
+              <Products />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/add-product"
+          element={
+            <DashboardLayout>
+              <AddProduct />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/products/:id/edit"
+          element={
+            <DashboardLayout>
+              <EditProduct />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/products/:id"
+          element={
+            <DashboardLayout>
+              <ProductDetails />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/expiring"
+          element={
+            <DashboardLayout>
+              <Expiring />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/settings"
+          element={
+            <DashboardLayout>
+              <Settings />
+            </DashboardLayout>
+          }
+        />
+
+        {/* Unknown URLs go back to login */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </BrowserRouter>
   )
 }

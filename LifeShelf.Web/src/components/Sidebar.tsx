@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 const navigation = [
   {
-    to: '/',
+    to: '/dashboard',
     label: 'Dashboard',
     end: true,
     icon: (
@@ -39,45 +39,7 @@ const navigation = [
       </svg>
     ),
   },
-  {
-    to: '/usage',
-    label: 'Usage',
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        className="h-[19px] w-[19px]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        aria-hidden="true"
-      >
-        <path d="M7 4h10v16H7z" />
-        <path d="M9.5 8h5" />
-        <path d="M9.5 12h5" />
-        <path d="M9.5 16h3" />
-      </svg>
-    ),
-  },
-  {
-    to: '/analytics',
-    label: 'Analytics',
-    icon: (
-      <svg
-        viewBox="0 0 24 24"
-        className="h-[19px] w-[19px]"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        aria-hidden="true"
-      >
-        <path d="M5 19V10" />
-        <path d="M10 19V6" />
-        <path d="M15 19v-8" />
-        <path d="M20 19V4" />
-        <path d="M4 19h17" />
-      </svg>
-    ),
-  },
+ 
   {
     to: '/expiring',
     label: 'Expiring',

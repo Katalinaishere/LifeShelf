@@ -1,3 +1,4 @@
+
 export interface UsageLog {
   id: number
   productId: number
@@ -17,46 +18,63 @@ export interface CreateUsageLog {
 
 const API_URL = 'http://localhost:5151/api/usage-logs'
 
-export async function getUsageLogs(
-  productId: number
-): Promise<UsageLog[]> {
-  const response = await fetch(
-    `${API_URL}/product/${productId}`
-  )
+function getAuthHeaders(includeJsonContentType = false): HeadersInit {
+  const token = sessionStorage.getItem('lifeshelf_token')
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch usage logs')
+  return {
+    ...(includeJsonContentType
+      ? { 'Content-Type': 'application/json' }
+      : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
+
+async function handleResponse(response: Response): Promise<void> {
+  if (response.ok) return
+
+  if (response.status === 401) {
+    throw new Error(
+      'Your session has expired or you are not signed in. Please log in again.',
+    )
   }
 
+  if (response.status === 403) {
+    throw new Error('You do not have permission to perform this action.')
+  }
+
+  const message = await response.text()
+  throw new Error(message || `Request failed (${response.status})`)
+}
+
+export async function getUsageLogs(
+  productId: number,
+): Promise<UsageLog[]> {
+  const response = await fetch(`${API_URL}/product/${productId}`, {
+    headers: getAuthHeaders(),
+  })
+
+  await handleResponse(response)
   return response.json()
 }
 
 export async function createUsageLog(
-  log: CreateUsageLog
+  log: CreateUsageLog,
 ): Promise<UsageLog> {
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: getAuthHeaders(true),
     body: JSON.stringify(log),
   })
 
-  if (!response.ok) {
-    throw new Error('Failed to create usage log')
-  }
-
+  await handleResponse(response)
   return response.json()
 }
 
-export async function deleteUsageLog(
-  id: number
-): Promise<void> {
+export async function deleteUsageLog(id: number): Promise<void> {
   const response = await fetch(`${API_URL}/${id}`, {
     method: 'DELETE',
+    headers: getAuthHeaders(),
   })
 
-  if (!response.ok) {
-    throw new Error('Failed to delete usage log')
-  }
+  await handleResponse(response)
 }

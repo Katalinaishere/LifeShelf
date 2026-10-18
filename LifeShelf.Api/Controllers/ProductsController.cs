@@ -1,11 +1,15 @@
+
+using System.Security.Claims;
 using LifeShelf.Api.DTOs;
 using LifeShelf.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LifeShelf.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class ProductsController : ControllerBase
 {
     private readonly IProductService _productService;
@@ -15,35 +19,47 @@ public class ProductsController : ControllerBase
         _productService = productService;
     }
 
-    // GET: api/products
+    private string? GetCurrentUserId()
+    {
+        return User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetProducts()
     {
-        var products = await _productService.GetProductsAsync();
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
 
+        var products = await _productService.GetProductsAsync(userId);
         return Ok(products);
     }
 
-    // GET: api/products/1
     [HttpGet("{id}")]
     public async Task<IActionResult> GetProduct(int id)
     {
-        var product = await _productService.GetProductByIdAsync(id);
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var product = await _productService.GetProductByIdAsync(id, userId);
 
         if (product == null)
-        {
             return NotFound();
-        }
 
         return Ok(product);
     }
 
-    // POST: api/products
     [HttpPost]
     public async Task<IActionResult> CreateProduct(
-        CreateProductDto dto)
+        [FromBody] CreateProductDto dto)
     {
-        var product = await _productService.CreateProductAsync(dto);
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var product = await _productService.CreateProductAsync(dto, userId);
 
         return CreatedAtAction(
             nameof(GetProduct),
@@ -52,33 +68,35 @@ public class ProductsController : ControllerBase
         );
     }
 
-    // PUT: api/products/1
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProduct(
         int id,
-        UpdateProductDto dto)
+        [FromBody] UpdateProductDto dto)
     {
-        var product =
-            await _productService.UpdateProductAsync(id, dto);
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var product = await _productService.UpdateProductAsync(
+            id, dto, userId);
 
         if (product == null)
-        {
             return NotFound();
-        }
 
         return Ok(product);
     }
 
-    // DELETE: api/products/1
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProduct(int id)
     {
-        var deleted = await _productService.DeleteProductAsync(id);
+        var userId = GetCurrentUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var deleted = await _productService.DeleteProductAsync(id, userId);
 
         if (!deleted)
-        {
             return NotFound();
-        }
 
         return NoContent();
     }

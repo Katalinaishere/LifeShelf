@@ -1,3 +1,4 @@
+
 using LifeShelf.Api.Data;
 using LifeShelf.Api.DTOs;
 using LifeShelf.Api.Models;
@@ -14,9 +15,19 @@ public class UsageLogService : IUsageLogService
         _context = context;
     }
 
-    public async Task<List<UsageLogResponseDto>> GetLogsForProductAsync(
-        int productId)
+    public async Task<List<UsageLogResponseDto>?> GetLogsForProductAsync(
+        int productId,
+        string userId)
     {
+        var ownsProduct = await _context.Products.AnyAsync(
+            product => product.Id == productId
+                && product.UserId == userId);
+
+        if (!ownsProduct)
+        {
+            return null;
+        }
+
         return await _context.UsageLogs
             .Where(log => log.ProductId == productId)
             .OrderByDescending(log => log.Date)
@@ -32,10 +43,13 @@ public class UsageLogService : IUsageLogService
             .ToListAsync();
     }
 
-    public async Task<UsageLogResponseDto?> GetLogByIdAsync(int id)
+    public async Task<UsageLogResponseDto?> GetLogByIdAsync(
+        int id,
+        string userId)
     {
         return await _context.UsageLogs
-            .Where(log => log.Id == id)
+            .Where(log => log.Id == id
+                && log.Product.UserId == userId)
             .Select(log => new UsageLogResponseDto
             {
                 Id = log.Id,
@@ -49,12 +63,14 @@ public class UsageLogService : IUsageLogService
     }
 
     public async Task<UsageLogResponseDto?> CreateUsageLogAsync(
-        CreateUsageLogDto dto)
+        CreateUsageLogDto dto,
+        string userId)
     {
-        var productExists = await _context.Products
-            .AnyAsync(product => product.Id == dto.ProductId);
+        var ownsProduct = await _context.Products.AnyAsync(
+            product => product.Id == dto.ProductId
+                && product.UserId == userId);
 
-        if (!productExists)
+        if (!ownsProduct)
         {
             return null;
         }
@@ -69,7 +85,6 @@ public class UsageLogService : IUsageLogService
         };
 
         _context.UsageLogs.Add(usageLog);
-
         await _context.SaveChangesAsync();
 
         return new UsageLogResponseDto
@@ -83,9 +98,14 @@ public class UsageLogService : IUsageLogService
         };
     }
 
-    public async Task<bool> DeleteUsageLogAsync(int id)
+    public async Task<bool> DeleteUsageLogAsync(
+        int id,
+        string userId)
     {
-        var usageLog = await _context.UsageLogs.FindAsync(id);
+        var usageLog = await _context.UsageLogs
+            .FirstOrDefaultAsync(log =>
+                log.Id == id &&
+                log.Product.UserId == userId);
 
         if (usageLog == null)
         {
@@ -93,7 +113,6 @@ public class UsageLogService : IUsageLogService
         }
 
         _context.UsageLogs.Remove(usageLog);
-
         await _context.SaveChangesAsync();
 
         return true;

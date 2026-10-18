@@ -1,3 +1,4 @@
+
 using LifeShelf.Api.Data;
 using LifeShelf.Api.DTOs;
 using LifeShelf.Api.Models;
@@ -14,27 +15,30 @@ public class ProductService : IProductService
         _context = context;
     }
 
-    public async Task<List<ProductResponseDto>> GetProductsAsync()
+    public async Task<List<ProductResponseDto>> GetProductsAsync(
+        string userId)
     {
         return await _context.Products
+            .Where(product => product.UserId == userId)
             .Select(product => MapToResponse(product))
             .ToListAsync();
     }
 
-    public async Task<ProductResponseDto?> GetProductByIdAsync(int id)
+    public async Task<ProductResponseDto?> GetProductByIdAsync(
+        int id,
+        string userId)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products
+            .FirstOrDefaultAsync(product =>
+                product.Id == id &&
+                product.UserId == userId);
 
-        if (product == null)
-        {
-            return null;
-        }
-
-        return MapToResponse(product);
+        return product == null ? null : MapToResponse(product);
     }
 
     public async Task<ProductResponseDto> CreateProductAsync(
-        CreateProductDto dto)
+        CreateProductDto dto,
+        string userId)
     {
         var product = new Product
         {
@@ -50,11 +54,11 @@ public class ProductService : IProductService
             ExpirationDate = dto.ExpirationDate,
             ExpectedDurationDays = dto.ExpectedDurationDays,
             UsageFrequency = dto.UsageFrequency,
-            Notes = dto.Notes
+            Notes = dto.Notes,
+            UserId = userId
         };
 
         _context.Products.Add(product);
-
         await _context.SaveChangesAsync();
 
         return MapToResponse(product);
@@ -62,9 +66,13 @@ public class ProductService : IProductService
 
     public async Task<ProductResponseDto?> UpdateProductAsync(
         int id,
-        UpdateProductDto dto)
+        UpdateProductDto dto,
+        string userId)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products
+            .FirstOrDefaultAsync(product =>
+                product.Id == id &&
+                product.UserId == userId);
 
         if (product == null)
         {
@@ -90,9 +98,14 @@ public class ProductService : IProductService
         return MapToResponse(product);
     }
 
-    public async Task<bool> DeleteProductAsync(int id)
+    public async Task<bool> DeleteProductAsync(
+        int id,
+        string userId)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _context.Products
+            .FirstOrDefaultAsync(product =>
+                product.Id == id &&
+                product.UserId == userId);
 
         if (product == null)
         {
@@ -100,7 +113,6 @@ public class ProductService : IProductService
         }
 
         _context.Products.Remove(product);
-
         await _context.SaveChangesAsync();
 
         return true;

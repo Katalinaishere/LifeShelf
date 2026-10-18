@@ -1,1024 +1,769 @@
+
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-
 import { getProducts } from '../services/productService'
 import type { Product } from '../types/product'
+import {
+  getUsageLogs,
+  type UsageLog,
+} from '../services/usageLogService'
+
+function parseLocalDate(value: string | null | undefined): Date | null {
+  if (!value) return null
+
+  const datePart = value.slice(0, 10)
+  const parts = datePart.split('-').map(Number)
+
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null
+
+  const [year, month, day] = parts
+  const date = new Date(year, month - 1, day)
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null
+  }
+
+  return date
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
+}
+
+function formatDate(value: string | null | undefined): string {
+  const date = parseLocalDate(value)
+  if (!date) return 'No date recorded'
+
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function getDaysUntil(dateValue: string | null | undefined): number | null {
+  const date = parseLocalDate(dateValue)
+  if (!date) return null
+
+  const today = startOfDay(new Date())
+  return Math.round((startOfDay(date).getTime() - today.getTime()) / 86400000)
+}
+
+function greeting(): string {
+  const hour = new Date().getHours()
+
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 2,
+  }).format(value)
+}
 
 function Dashboard() {
   const [products, setProducts] = useState<Product[]>([])
+  const [usageLogs, setUsageLogs] = useState<UsageLog[]>([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [usageLoading, setUsageLoading] = useState(false)
+  const [usageError, setUsageError] = useState<string | null>(null)
+
+  async function loadProducts() {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const data = await getProducts()
+      setProducts(data)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load your products. Please try again.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function loadProducts() {
+    void loadProducts()
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadUsageLogs() {
+      if (products.length === 0) {
+        setUsageLogs([])
+        setUsageError(null)
+        setUsageLoading(false)
+        return
+      }
+
+      setUsageLoading(true)
+      setUsageError(null)
+
       try {
-        const data = await getProducts()
-        setProducts(data)
-      } catch (error) {
-        console.error(error)
-        setError('Could not load your products.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadProducts()
-  }, [])
-
-  const today = useMemo(() => {
-    const date = new Date()
-    date.setHours(0, 0, 0, 0)
-    return date
-  }, [])
-
-  const upcomingProducts = useMemo(() => {
-    const thirtyDaysFromNow = new Date(today)
-    thirtyDaysFromNow.setDate(today.getDate() + 30)
-
-    return products
-      .filter((product) => {
-        if (!product.expirationDate) {
-          return false
-        }
-
-        const expiration = new Date(product.expirationDate)
-        expiration.setHours(0, 0, 0, 0)
-
-        return (
-          expiration >= today &&
-          expiration <= thirtyDaysFromNow
+        const logsByProduct = await Promise.all(
+          products.map((product) => getUsageLogs(product.id)),
         )
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.expirationDate!).getTime()
-        const dateB = new Date(b.expirationDate!).getTime()
 
-        return dateA - dateB
-      })
-  }, [products, today])
-
-  const expiredProducts = useMemo(() => {
-    return products
-      .filter((product) => {
-        if (!product.expirationDate) {
-          return false
+        if (active) {
+          setUsageLogs(logsByProduct.flat())
         }
-
-        const expiration = new Date(product.expirationDate)
-        expiration.setHours(0, 0, 0, 0)
-
-        return expiration < today
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.expirationDate!).getTime()
-        const dateB = new Date(b.expirationDate!).getTime()
-
-        return dateA - dateB
-      })
-  }, [products, today])
-
-  const recentProducts = useMemo(() => {
-    return [...products]
-      .sort((a, b) => {
-        const dateA = a.createdAt
-          ? new Date(a.createdAt).getTime()
-          : 0
-
-        const dateB = b.createdAt
-          ? new Date(b.createdAt).getTime()
-          : 0
-
-        return dateB - dateA
-      })
-      .slice(0, 5)
-  }, [products])
-
-  const productsWithExpiration = useMemo(() => {
-    return products.filter(
-      (product) => product.expirationDate
-    ).length
-  }, [products])
-
-  const getDaysUntil = (expirationDate: string) => {
-    const expiration = new Date(expirationDate)
-    expiration.setHours(0, 0, 0, 0)
-
-    const difference =
-      expiration.getTime() - today.getTime()
-
-    return Math.ceil(
-      difference / (1000 * 60 * 60 * 24)
-    )
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(
-      'en-US',
-      {
-        month: 'short',
-        day: 'numeric',
+      } catch (err) {
+        if (active) {
+          setUsageError(
+            err instanceof Error
+              ? err.message
+              : 'Usage insights are temporarily unavailable.',
+          )
+        }
+      } finally {
+        if (active) setUsageLoading(false)
       }
+    }
+
+    void loadUsageLogs()
+
+    return () => {
+      active = false
+    }
+  }, [products])
+
+  const today = startOfDay(new Date())
+
+  const upcomingProducts = useMemo(
+    () =>
+      products
+        .filter((product) => {
+          const days = getDaysUntil(product.expirationDate)
+          return days !== null && days >= 0 && days <= 30
+        })
+        .sort(
+          (a, b) =>
+            (getDaysUntil(a.expirationDate) ?? 9999) -
+            (getDaysUntil(b.expirationDate) ?? 9999),
+        ),
+    [products],
+  )
+
+  const expiredProducts = useMemo(
+    () =>
+      products
+        .filter((product) => {
+          const days = getDaysUntil(product.expirationDate)
+          return days !== null && days < 0
+        })
+        .sort(
+          (a, b) =>
+            (getDaysUntil(a.expirationDate) ?? 0) -
+            (getDaysUntil(b.expirationDate) ?? 0),
+        ),
+    [products],
+  )
+
+  const recentProducts = useMemo(
+    () =>
+      [...products]
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() -
+            new Date(a.createdAt).getTime(),
+        )
+        .slice(0, 4),
+    [products],
+  )
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return products
+
+    return products.filter((product) =>
+      [
+        product.name,
+        product.brand,
+        product.category,
+        product.subcategory ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(query),
     )
-  }
+  }, [products, search])
 
-  const getExpirationLabel = (product: Product) => {
-    if (!product.expirationDate) {
-      return 'No expiration'
-    }
+  const recordedValue = products.reduce(
+    (total, product) => total + (product.price ?? 0),
+    0,
+  )
 
-    const days = getDaysUntil(product.expirationDate)
+  const productsWithExpiry = products.filter(
+    (product) => Boolean(product.expirationDate),
+  ).length
 
-    if (days < 0) {
-      return 'Expired'
-    }
+  const recentUsageLogs = useMemo(
+    () =>
+      [...usageLogs]
+        .filter((log) => products.some((product) => product.id === log.productId))
+        .sort(
+          (a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime(),
+        )
+        .slice(0, 5),
+    [usageLogs, products],
+  )
 
-    if (days === 0) {
-      return 'Today'
-    }
+  const productNames = useMemo(
+    () => new Map(products.map((product) => [product.id, product.name])),
+    [products],
+  )
 
-    if (days === 1) {
-      return 'Tomorrow'
-    }
+  const categoryCount = new Set(products.map((product) => product.category)).size
 
-    return `${days} days`
-  }
-
-  const getRelativeDate = (createdAt?: string) => {
-    if (!createdAt) {
-      return 'Recently added'
-    }
-
-    const created = new Date(createdAt)
-
-    const createdDate = new Date(
-      created.getFullYear(),
-      created.getMonth(),
-      created.getDate()
-    )
-
-    const difference =
-      today.getTime() - createdDate.getTime()
-
-    const days = Math.floor(
-      difference / (1000 * 60 * 60 * 24)
-    )
-
-    if (days <= 0) {
-      return 'Today'
-    }
-
-    if (days === 1) {
-      return 'Yesterday'
-    }
-
-    if (days < 7) {
-      return `${days} days ago`
-    }
-
-    if (days < 30) {
-      const weeks = Math.floor(days / 7)
-
-      return `${weeks} ${
-        weeks === 1 ? 'week' : 'weeks'
-      } ago`
-    }
-
-    return 'Recently'
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-[70vh] flex items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-8 w-8 rounded-full border-2 border-[#24594f]/20 border-t-[#24594f] animate-spin" />
-
-          <p className="text-sm text-[#6f7872]">
-            Preparing your shelf...
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="mx-auto max-w-[1180px] px-5 py-10">
-        <div className="border border-[#ead4cc] bg-[#fff8f5] p-6">
-          <p className="text-sm font-medium text-[#b84d3a]">
-            {error}
-          </p>
-        </div>
-      </div>
-    )
-  }
+  const greetingText = greeting()
 
   return (
-    <div className="relative mx-auto max-w-[1180px] px-5 pb-16 pt-3 md:px-8">
-
-      {/* Background atmosphere */}
-
-      <div className="pointer-events-none absolute -left-32 top-10 h-72 w-72 rounded-full bg-[#dce9e4]/60 blur-3xl" />
-
-      <div className="pointer-events-none absolute right-0 top-0 h-64 w-64 rounded-full bg-[#f2dfb4]/25 blur-3xl" />
-
-      <div className="relative">
-
-        {/* HEADER */}
-
-        <header className="mb-10 flex items-end justify-between gap-6">
-
+    <main className="min-h-screen bg-[#f5f5ef] px-4 py-6 text-[#183533] sm:px-6 lg:px-10 lg:py-9">
+      <div className="mx-auto max-w-7xl space-y-8">
+        {/* Header */}
+        <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-
-            <div className="mb-4 flex items-center gap-2">
-
-              <span className="h-1.5 w-1.5 rounded-full bg-[#e6a92d]" />
-
-              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#6f7872]">
-                LifeShelf
-              </span>
-
-            </div>
-
-            <h1 className="text-[34px] font-medium tracking-[-0.04em] text-[#183533] md:text-[42px]">
-              Good evening, Kat.
-            </h1>
-
-            <p className="mt-3 max-w-xl text-[14px] leading-6 text-[#727a75]">
-              A quiet overview of everything you're
-              keeping on your shelf.
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8c9a8c]">
+              Your personal care space
             </p>
-
+            <h1 className="mt-3 text-3xl font-light tracking-tight sm:text-4xl">
+              {greetingText}.
+            </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[#7d8980]">
+              A little overview of your shelf, your products, and what needs
+              your attention.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-
-            {/* Search */}
-
-            <button
-              aria-label="Search"
-              className="
-                grid h-10 w-10 place-items-center
-                border border-white/80
-                bg-white/50
-                text-[#49635c]
-                shadow-[0_8px_30px_rgba(24,53,51,0.06)]
-                backdrop-blur-xl
-                transition
-                hover:-translate-y-0.5
-                hover:bg-white/80
-              "
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-[17px] w-[17px]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-              >
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="m16 16 4 4" />
-              </svg>
-            </button>
-
-            {/* Notifications */}
-
-            <button
-              aria-label="Notifications"
-              className="
-                relative grid h-10 w-10 place-items-center
-                border border-white/80
-                bg-white/50
-                text-[#49635c]
-                shadow-[0_8px_30px_rgba(24,53,51,0.06)]
-                backdrop-blur-xl
-                transition
-                hover:-translate-y-0.5
-                hover:bg-white/80
-              "
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-[17px] w-[17px]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-              >
-                <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-                <path d="M10 21h4" />
-              </svg>
-
-              {expiredProducts.length > 0 && (
-                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[#d1583f]" />
-              )}
-
-            </button>
-
-            {/* Profile */}
-
-            <Link
-              to="/profile"
-              aria-label="Profile"
-              className="
-                grid h-10 w-10 place-items-center
-                bg-[#183533]
-                text-xs font-medium text-white
-                shadow-[0_8px_25px_rgba(24,53,51,0.18)]
-                transition
-                hover:-translate-y-0.5
-              "
-            >
-              K
-            </Link>
-
-          </div>
-
+          <Link
+            to="/add-product"
+            className="inline-flex w-fit items-center gap-2 bg-[#244d43] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#183b33]"
+          >
+            <span className="text-lg leading-none">+</span>
+            Add a product
+          </Link>
         </header>
 
+        {/* Search and shortcuts */}
+        <section className="flex flex-col gap-3 sm:flex-row">
+          <label className="flex flex-1 items-center gap-3 border border-[#e4e7df] bg-white/80 px-4 py-3">
+            <span className="text-[#819087]" aria-hidden="true">⌕</span>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by product, brand, or category..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-[#a1aaa1]"
+              aria-label="Search products"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="text-xs text-[#718077] hover:text-[#183533]"
+              >
+                Clear
+              </button>
+            )}
+          </label>
 
-        {/* SHELF STATUS */}
-
-        <section
-          className="
-            mb-7
-            overflow-hidden
-            border border-white/80
-            bg-white/45
-            shadow-[0_20px_60px_rgba(24,53,51,0.07)]
-            backdrop-blur-2xl
-          "
-        >
-
-          <div className="grid grid-cols-3">
-
-            {/* Total products */}
-
-            <div className="px-5 py-6 md:px-8 md:py-7">
-
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#89918c]">
-                On your shelf
-              </p>
-
-              <div className="mt-3 flex items-end gap-3">
-
-                <span className="text-[38px] font-light tracking-[-0.05em] text-[#183533] md:text-[46px]">
-                  {products.length}
-                </span>
-
-                <span className="mb-2 text-xs text-[#89918c]">
-                  {products.length === 1
-                    ? 'product'
-                    : 'products'}
-                </span>
-
-              </div>
-
-            </div>
-
-
-            {/* Upcoming */}
-
-            <div className="my-5 border-l border-[#183533]/10 px-5 py-1 md:px-8">
-
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#89918c]">
-                Coming up
-              </p>
-
-              <div className="mt-3 flex items-end gap-3">
-
-                <span className="text-[38px] font-light tracking-[-0.05em] text-[#24594f] md:text-[46px]">
-                  {upcomingProducts.length}
-                </span>
-
-                <span className="mb-2 text-xs text-[#89918c]">
-                  next 30 days
-                </span>
-
-              </div>
-
-            </div>
-
-
-            {/* Expired */}
-
-            <div className="my-5 border-l border-[#183533]/10 px-5 py-1 md:px-8">
-
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#89918c]">
-                Expired
-              </p>
-
-              <div className="mt-3 flex items-end gap-3">
-
-                <span
-                  className={`text-[38px] font-light tracking-[-0.05em] md:text-[46px] ${
-                    expiredProducts.length > 0
-                      ? 'text-[#d1583f]'
-                      : 'text-[#183533]'
-                  }`}
-                >
-                  {expiredProducts.length}
-                </span>
-
-                <span className="mb-2 text-xs text-[#89918c]">
-                  needs review
-                </span>
-
-              </div>
-
-            </div>
-
-          </div>
-
+          <Link
+            to="/expiring"
+            className="border border-[#e4e7df] bg-white/80 px-5 py-3 text-center text-sm text-[#49645a] transition hover:bg-white"
+          >
+            Review expiration dates →
+          </Link>
         </section>
 
+        {/* Loading and error */}
+        {loading && (
+          <div className="border border-[#e4e7df] bg-white/70 p-8 text-sm text-[#718077]">
+            Loading your shelf...
+          </div>
+        )}
 
-        {/* MAIN GRID */}
+        {!loading && error && (
+          <div className="border border-red-200 bg-red-50 p-6">
+            <p className="text-sm text-red-800">{error}</p>
+            <button
+              type="button"
+              onClick={() => void loadProducts()}
+              className="mt-3 text-sm font-medium text-red-900 underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
 
-        <section className="grid gap-7 lg:grid-cols-[1.55fr_1fr]">
+        {!loading && !error && (
+          <>
+            {/* Summary cards */}
+            <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <SummaryCard
+                label="Products on your shelf"
+                value={products.length.toString()}
+                detail={`${categoryCount} ${
+                  categoryCount === 1 ? 'category' : 'categories'
+                }`}
+                accent="sage"
+              />
+              <SummaryCard
+                label="Expiring soon"
+                value={upcomingProducts.length.toString()}
+                detail="Within the next 30 days"
+                accent="gold"
+              />
+              <SummaryCard
+                label="Past expiration"
+                value={expiredProducts.length.toString()}
+                detail="Products to review"
+                accent="rose"
+              />
+              <SummaryCard
+                label="Recorded value"
+                value={formatCurrency(recordedValue)}
+                detail="Sum of entered product prices"
+                accent="cream"
+              />
+            </section>
 
-          {/* EXPIRATION TIMELINE */}
-
-          <div
-            className="
-              border border-white/80
-              bg-white/45
-              p-6
-              shadow-[0_20px_60px_rgba(24,53,51,0.06)]
-              backdrop-blur-2xl
-              md:p-8
-            "
-          >
-
-            <div className="mb-8 flex items-start justify-between">
-
-              <div>
-
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#89918c]">
-                  Shelf horizon
-                </p>
-
-                <h2 className="mt-2 text-xl font-medium tracking-[-0.025em] text-[#183533]">
-                  Expiration timeline
-                </h2>
-
-                <p className="mt-1.5 text-xs leading-5 text-[#7c8580]">
-                  Products approaching the end of
-                  their shelf life.
-                </p>
-
-              </div>
-
-              {upcomingProducts.length > 0 && (
-                <span className="text-xs text-[#89918c]">
-                  Next 30 days
-                </span>
-              )}
-
-            </div>
-
-
-            {upcomingProducts.length === 0 ? (
-
-              <div className="flex min-h-[220px] flex-col items-center justify-center border border-dashed border-[#183533]/10 px-6 text-center">
-
-                <div className="mb-4 grid h-11 w-11 place-items-center rounded-full bg-[#e8f1ee]">
-
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5 text-[#24594f]"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M12 3v18" />
-                    <path d="M5 12h14" />
-                  </svg>
-
+            {/* Empty state */}
+            {products.length === 0 ? (
+              <section className="border border-[#e4e7df] bg-white/75 px-6 py-16 text-center sm:px-12">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#e7eee7] text-2xl text-[#416c5c]">
+                  ✳
                 </div>
-
-                <p className="text-sm font-medium text-[#183533]">
-                  Your shelf is looking calm.
+                <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-[#89978b]">
+                  A fresh start
                 </p>
-
-                <p className="mt-1.5 max-w-xs text-xs leading-5 text-[#89918c]">
-                  Nothing is scheduled to expire
-                  within the next 30 days.
+                <h2 className="mt-3 text-2xl font-light">
+                  Your shelf is waiting.
+                </h2>
+                <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#7d8980]">
+                  Add your first skincare, wellness, or household product to
+                  start keeping track of expiration dates and usage.
                 </p>
-
-              </div>
-
+                <Link
+                  to="/add-product"
+                  className="mt-6 inline-flex bg-[#244d43] px-6 py-3 text-sm font-medium text-white transition hover:bg-[#183b33]"
+                >
+                  Add your first product
+                </Link>
+              </section>
             ) : (
+              <>
+                {/* Expiration timeline */}
+                <section className="border border-[#e4e7df] bg-white/75 p-6 sm:p-8">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#89978b]">
+                        Stay ahead
+                      </p>
+                      <h2 className="mt-2 text-xl font-medium">
+                        Expiration timeline
+                      </h2>
+                      <p className="mt-2 text-sm text-[#89978b]">
+                        Products that may need attention soon.
+                      </p>
+                    </div>
+                    <Link
+                      to="/expiring"
+                      className="text-sm text-[#496c5c] hover:underline"
+                    >
+                      View all →
+                    </Link>
+                  </div>
 
-              <div className="relative">
+                  {upcomingProducts.length === 0 ? (
+                    <p className="mt-6 bg-[#f1f5ef] p-5 text-sm text-[#718077]">
+                      Nothing is expiring within the next 30 days based on
+                      your recorded dates.
+                    </p>
+                  ) : (
+                    <div className="mt-6 divide-y divide-[#e8ebe4]">
+                      {upcomingProducts.slice(0, 5).map((product) => {
+                        const days = getDaysUntil(product.expirationDate) ?? 0
 
-                <div className="absolute bottom-5 left-[7px] top-5 w-px bg-[#cbdad5]" />
+                        return (
+                          <Link
+                            key={product.id}
+                            to={`/products/${product.id}`}
+                            className="flex flex-wrap items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">
+                                {product.name}
+                              </p>
+                              <p className="mt-1 text-xs text-[#89978b]">
+                                {product.brand || product.category}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p
+                                className={`text-sm font-medium ${
+                                  days <= 7 ? 'text-[#ad7043]' : 'text-[#496c5c]'
+                                }`}
+                              >
+                                {days === 0
+                                  ? 'Expires today'
+                                  : days === 1
+                                    ? '1 day left'
+                                    : `${days} days left`}
+                              </p>
+                              <p className="mt-1 text-xs text-[#89978b]">
+                                {formatDate(product.expirationDate)}
+                              </p>
+                            </div>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  )}
+                </section>
 
-                <div className="space-y-1">
+                {/* Product collection */}
+                <section className="border border-[#244d43] bg-[#244d43] p-6 text-white sm:p-8">
+                  <div className="flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#bdcfc1]">
+                        Your collection
+                      </p>
+                      <h2 className="mt-2 text-xl font-medium">
+                        {search ? 'Search results' : 'On your shelf'}
+                      </h2>
+                      <p className="mt-2 text-sm text-[#d0ded3]">
+                        {search
+                          ? `${filteredProducts.length} matching ${
+                              filteredProducts.length === 1 ? 'product' : 'products'
+                            }`
+                          : 'Your recently added products'}
+                      </p>
+                    </div>
+                    <Link
+                      to="/products"
+                      className="text-sm text-white/90 hover:underline"
+                    >
+                      View collection →
+                    </Link>
+                  </div>
 
-                  {upcomingProducts
-                    .slice(0, 6)
-                    .map((product) => {
+                  {filteredProducts.length === 0 ? (
+                    <div className="mt-6 border border-white/20 p-6 text-sm text-[#d0ded3]">
+                      No products match that search. Try another name, brand,
+                      or category.
+                    </div>
+                  ) : (
+                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {(search ? filteredProducts : recentProducts).map(
+                        (product) => (
+                          <Link
+                            key={product.id}
+                            to={`/products/${product.id}`}
+                            className="group bg-white/[0.08] p-5 transition hover:bg-white/[0.14]"
+                          >
+                            <p className="text-[10px] uppercase tracking-[0.16em] text-[#bdcfc1]">
+                              {product.category}
+                            </p>
+                            <h3 className="mt-3 line-clamp-2 text-base font-medium">
+                              {product.name}
+                            </h3>
+                            <p className="mt-1 truncate text-sm text-[#d0ded3]">
+                              {product.brand || 'Brand not specified'}
+                            </p>
+                            <div className="mt-5 border-t border-white/15 pt-3">
+                              <p className="text-xs text-[#d0ded3]">
+                                {product.expirationDate
+                                  ? `Expires ${formatDate(product.expirationDate)}`
+                                  : 'No expiration date'}
+                              </p>
+                              <p className="mt-3 text-xs text-white/90 group-hover:underline">
+                                View product →
+                              </p>
+                            </div>
+                          </Link>
+                        ),
+                      )}
+                    </div>
+                  )}
+                </section>
 
-                      const days = getDaysUntil(
-                        product.expirationDate!
-                      )
+                {/* Shelf overview */}
+                <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  <div className="border border-[#e4e7df] bg-white/75 p-6 sm:p-8">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#89978b]">
+                      Collection overview
+                    </p>
+                    <h2 className="mt-2 text-xl font-medium">Shelf overview</h2>
 
-                      return (
+                    <div className="mt-6 space-y-5">
+                      <div>
+                        <div className="flex justify-between gap-3 text-sm">
+                          <span className="text-[#718077]">With expiration dates</span>
+                          <span className="font-medium">
+                            {productsWithExpiry} / {products.length}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden bg-[#e8ece5]">
+                          <div
+                            className="h-full bg-[#638b72]"
+                            style={{
+                              width: `${
+                                products.length
+                                  ? (productsWithExpiry / products.length) * 100
+                                  : 0
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </div>
 
+                      <div>
+                        <div className="flex justify-between gap-3 text-sm">
+                          <span className="text-[#718077]">Products to review</span>
+                          <span className="font-medium">
+                            {upcomingProducts.length + expiredProducts.length}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden bg-[#e8ece5]">
+                          <div
+                            className="h-full bg-[#c6a66b]"
+                            style={{
+                              width: `${
+                                products.length
+                                  ? Math.min(
+                                      100,
+                                      ((upcomingProducts.length +
+                                        expiredProducts.length) /
+                                        products.length) *
+                                        100,
+                                    )
+                                  : 0
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="mt-6 text-xs leading-5 text-[#89978b]">
+                      Keep expiration dates updated to make these summaries
+                      more useful.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col justify-between border border-[#e4e7df] bg-[#e9eee5] p-6 sm:p-8">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#718477]">
+                        Keep things current
+                      </p>
+                      <h2 className="mt-2 text-xl font-medium">
+                        A little shelf care goes a long way.
+                      </h2>
+                      <p className="mt-3 max-w-md text-sm leading-6 text-[#718077]">
+                        Add new purchases, update opened dates, and review
+                        products approaching expiration.
+                      </p>
+                    </div>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <Link
+                        to="/add-product"
+                        className="bg-[#244d43] px-4 py-3 text-sm font-medium text-white hover:bg-[#183b33]"
+                      >
+                        Add product
+                      </Link>
+                      <Link
+                        to="/settings"
+                        className="border border-[#cbd7ca] px-4 py-3 text-sm text-[#244d43] hover:bg-white/60"
+                      >
+                        Settings
+                      </Link>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Expired products */}
+                {expiredProducts.length > 0 && (
+                  <section className="border border-[#eadbd0] bg-[#fffaf6] p-6 sm:p-8">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b37b5b]">
+                          Shelf check
+                        </p>
+                        <h2 className="mt-2 text-xl font-medium">
+                          Products to review
+                        </h2>
+                        <p className="mt-2 text-sm text-[#927d70]">
+                          These recorded expiration dates are in the past.
+                        </p>
+                      </div>
+                      <span className="bg-[#f3e5da] px-3 py-2 text-xs text-[#9c674a]">
+                        {expiredProducts.length} to review
+                      </span>
+                    </div>
+
+                    <div className="mt-5 divide-y divide-[#efe2d8]">
+                      {expiredProducts.slice(0, 5).map((product) => (
                         <Link
                           key={product.id}
                           to={`/products/${product.id}`}
-                          className="
-                            group relative
-                            flex items-center gap-5
-                            py-4 pl-0
-                            transition
-                          "
+                          className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
                         >
-
-                          <div
-                            className={`
-                              relative z-10
-                              h-[15px] w-[15px]
-                              shrink-0 rounded-full
-                              border-[3px]
-                              border-[#f6efe0]
-                              ring-1
-                              ${
-                                days <= 7
-                                  ? 'bg-[#d1583f] ring-[#d1583f]/30'
-                                  : 'bg-[#24594f] ring-[#24594f]/25'
-                              }
-                            `}
-                          />
-
-                          <div className="min-w-0 flex-1 border-b border-[#183533]/7 pb-4">
-
-                            <div className="flex items-center justify-between gap-4">
-
-                              <div className="min-w-0">
-
-                                <h3 className="truncate text-sm font-medium text-[#183533] transition group-hover:text-[#24594f]">
-                                  {product.name}
-                                </h3>
-
-                                <p className="mt-1 truncate text-[11px] text-[#89918c]">
-                                  {product.brand
-                                    ? `${product.brand} · `
-                                    : ''}
-                                  {product.category}
-                                </p>
-
-                              </div>
-
-                              <div className="shrink-0 text-right">
-
-                                <p
-                                  className={`text-xs font-medium ${
-                                    days <= 7
-                                      ? 'text-[#d1583f]'
-                                      : 'text-[#24594f]'
-                                  }`}
-                                >
-                                  {getExpirationLabel(
-                                    product
-                                  )}
-                                </p>
-
-                                <p className="mt-1 text-[10px] text-[#a0a7a3]">
-                                  {formatDate(
-                                    product.expirationDate!
-                                  )}
-                                </p>
-
-                              </div>
-
-                            </div>
-
+                          <div>
+                            <p className="text-sm font-medium">{product.name}</p>
+                            <p className="mt-1 text-xs text-[#927d70]">
+                              {product.brand || product.category}
+                            </p>
                           </div>
-
+                          <div className="text-right">
+                            <p className="text-sm text-[#a65f42]">
+                              {Math.abs(
+                                getDaysUntil(product.expirationDate) ?? 0,
+                              )}{' '}
+                              days past date
+                            </p>
+                            <p className="mt-1 text-xs text-[#927d70]">
+                              {formatDate(product.expirationDate)}
+                            </p>
+                          </div>
                         </Link>
-
-                      )
-                    })}
-
-                </div>
-
-              </div>
-
-            )}
-
-          </div>
-
-
-          {/* COLLECTION */}
-
-          <div
-            className="
-              border border-white/80
-              bg-[#183533]
-              p-6
-              text-white
-              shadow-[0_20px_60px_rgba(24,53,51,0.14)]
-              md:p-8
-            "
-          >
-
-            <div className="mb-8 flex items-start justify-between">
-
-              <div>
-
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/45">
-                  Your shelf
-                </p>
-
-                <h2 className="mt-2 text-xl font-medium tracking-[-0.025em]">
-                  Your collection
-                </h2>
-
-              </div>
-
-              <span className="text-xs text-white/45">
-                {products.length}
-              </span>
-
-            </div>
-
-
-            {recentProducts.length === 0 ? (
-
-              <div className="flex min-h-[220px] flex-col justify-center">
-
-                <p className="text-sm text-white/70">
-                  Your collection is waiting.
-                </p>
-
-                <p className="mt-2 text-xs leading-5 text-white/40">
-                  Add your first product to begin
-                  building your shelf.
-                </p>
-
-                <Link
-                  to="/products/add"
-                  className="
-                    mt-6 inline-flex w-fit
-                    border border-white/15
-                    bg-white/10
-                    px-4 py-2.5
-                    text-xs font-medium
-                    text-white
-                    transition
-                    hover:bg-white/15
-                  "
-                >
-                  Add product
-                </Link>
-
-              </div>
-
-            ) : (
-
-              <>
-
-                <div className="space-y-1">
-
-                  {recentProducts.map((product) => (
-
-                    <Link
-                      key={product.id}
-                      to={`/products/${product.id}`}
-                      className="
-                        group
-                        flex items-center gap-4
-                        border-b border-white/10
-                        py-4
-                        transition
-                        first:pt-0
-                        last:border-0
-                      "
-                    >
-
-                      <div
-                        className="
-                          grid h-10 w-10 shrink-0
-                          place-items-center
-                          border border-white/10
-                          bg-white/8
-                          text-xs
-                          text-white/50
-                        "
-                      >
-                        {product.name
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-
-                        <h3 className="truncate text-sm font-medium text-white/90 group-hover:text-white">
-                          {product.name}
-                        </h3>
-
-                        <p className="mt-1 truncate text-[10px] text-white/40">
-                          {product.brand
-                            ? `${product.brand} · `
-                            : ''}
-                          {product.category}
-                        </p>
-
-                      </div>
-
-                      <span className="shrink-0 text-[10px] text-white/35">
-                        {getRelativeDate(
-                          product.createdAt
-                        )}
-                      </span>
-
-                    </Link>
-
-                  ))}
-
-                </div>
-
-                <Link
-                  to="/products"
-                  className="
-                    mt-7 flex items-center
-                    justify-between
-                    border-t border-white/10
-                    pt-5
-                    text-xs
-                    text-white/55
-                    transition
-                    hover:text-white
-                  "
-                >
-                  <span>
-                    View entire collection
-                  </span>
-
-                  <span className="text-base">
-                    →
-                  </span>
-
-                </Link>
-
+                      ))}
+                    </div>
+                  </section>
+                )}
               </>
-
             )}
 
-          </div>
+            {/* Usage insights */}
+            <section className="border border-[#e4e7df] bg-white/75 p-6 shadow-[0_20px_60px_rgba(24,53,51,0.04)] sm:p-8">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#89978b]">
+                    Your routine
+                  </p>
+                  <h2 className="mt-2 text-xl font-medium">Usage insights</h2>
+                  <p className="mt-2 text-sm text-[#89978b]">
+                    Your most recent recorded product activity.
+                  </p>
+                </div>
 
-        </section>
-
-
-        {/* REVIEW */}
-
-        {expiredProducts.length > 0 && (
-
-          <section
-            className="
-              mt-7
-              border border-[#ead4cc]
-              bg-[#fffaf7]/75
-              shadow-[0_20px_60px_rgba(24,53,51,0.04)]
-              backdrop-blur-xl
-            "
-          >
-
-            <div className="flex items-center justify-between border-b border-[#ead4cc] px-6 py-5 md:px-8">
-
-              <div>
-
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#b26a5b]">
-                  Review
-                </p>
-
-                <h2 className="mt-2 text-xl font-medium tracking-[-0.025em] text-[#183533]">
-                  Needs your attention
-                </h2>
-
+                <div className="bg-[#e8f1ee] px-5 py-3">
+                  <p className="text-2xl font-light text-[#24594f]">
+                    {usageLogs.length}
+                  </p>
+                  <p className="mt-1 text-xs text-[#69827a]">
+                    Usage entries
+                  </p>
+                </div>
               </div>
 
-              <span className="text-sm text-[#b26a5b]">
-                {expiredProducts.length}
-              </span>
-
-            </div>
-
-
-            <div className="divide-y divide-[#ead4cc]">
-
-              {expiredProducts
-                .slice(0, 5)
-                .map((product) => (
-
-                  <Link
-                    key={product.id}
-                    to={`/products/${product.id}`}
-                    className="
-                      group
-                      flex items-center justify-between
-                      gap-5
-                      px-6 py-4
-                      transition
-                      hover:bg-white/50
-                      md:px-8
-                    "
-                  >
-
-                    <div className="flex min-w-0 items-center gap-4">
-
-                      <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#d1583f]" />
-
+              {usageLoading ? (
+                <p className="mt-6 text-sm text-[#89978b]">
+                  Loading your usage history...
+                </p>
+              ) : usageError ? (
+                <div className="mt-6 bg-[#fff5f0] p-5">
+                  <p className="text-sm text-[#a65f42]">{usageError}</p>
+                  <p className="mt-2 text-xs leading-5 text-[#927d70]">
+                    Your products are still available above. Check your login
+                    session and API if this continues.
+                  </p>
+                </div>
+              ) : recentUsageLogs.length === 0 ? (
+                <div className="mt-6 border border-dashed border-[#183533]/15 p-7 text-center">
+                  <p className="text-sm font-medium text-[#183533]">
+                    No usage activity yet.
+                  </p>
+                  <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[#89978b]">
+                    Open a product's details page and record its usage. Your
+                    latest entries will appear here.
+                  </p>
+                  {products.length > 0 && (
+                    <Link
+                      to="/products"
+                      className="mt-4 inline-block text-sm text-[#496c5c] hover:underline"
+                    >
+                      Browse products →
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-5 divide-y divide-[#e8ebe4]">
+                  {recentUsageLogs.map((log) => (
+                    <Link
+                      key={log.id}
+                      to={`/products/${log.productId}`}
+                      className="flex items-center justify-between gap-4 py-4 transition hover:bg-[#f7f8f3]"
+                    >
                       <div className="min-w-0">
-
-                        <h3 className="truncate text-sm font-medium text-[#183533]">
-                          {product.name}
-                        </h3>
-
-                        <p className="mt-1 truncate text-[11px] text-[#89918c]">
-                          {product.brand
-                            ? `${product.brand} · `
-                            : ''}
-                          {product.category}
+                        <p className="truncate text-sm font-medium text-[#183533]">
+                          {productNames.get(log.productId) ?? 'Product'}
                         </p>
-
-                      </div>
-
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-5">
-
-                      <span className="hidden text-[11px] text-[#a0a7a3] sm:block">
-                        {formatDate(
-                          product.expirationDate!
+                        <p className="mt-1 text-xs text-[#89978b]">
+                          {formatDate(log.date)}
+                        </p>
+                        {log.notes && (
+                          <p className="mt-1 truncate text-xs text-[#89978b]">
+                            {log.notes}
+                          </p>
                         )}
+                      </div>
+                      <span className="shrink-0 text-sm font-medium text-[#24594f]">
+                        {log.amountUsed} {log.unit}
                       </span>
-
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d1583f]">
-                        Expired
-                      </span>
-
-                      <span className="text-[#b7aaa5]">
-                        →
-                      </span>
-
-                    </div>
-
-                  </Link>
-
-                ))}
-
-            </div>
-
-          </section>
-
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
         )}
-
-
-        {/* LOWER INFORMATION */}
-
-        <section className="mt-7 grid gap-7 md:grid-cols-2">
-
-          {/* Shelf overview */}
-
-          <div className="border border-white/80 bg-white/40 p-6 backdrop-blur-xl md:p-7">
-
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#89918c]">
-              Shelf overview
-            </p>
-
-            <div className="mt-6 grid grid-cols-2 gap-6">
-
-              <div>
-
-                <p className="text-3xl font-light tracking-[-0.04em] text-[#183533]">
-                  {productsWithExpiration}
-                </p>
-
-                <p className="mt-1 text-xs text-[#89918c]">
-                  with expiration dates
-                </p>
-
-              </div>
-
-              <div>
-
-                <p className="text-3xl font-light tracking-[-0.04em] text-[#183533]">
-                  {products.length -
-                    productsWithExpiration}
-                </p>
-
-                <p className="mt-1 text-xs text-[#89918c]">
-                  without expiration
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          {/* Quick action */}
-
-          <div className="border border-[#d9e5e0] bg-[#eaf2ef]/65 p-6 backdrop-blur-xl md:p-7">
-
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#69827a]">
-              Keep it simple
-            </p>
-
-            <p className="mt-4 max-w-md text-sm leading-6 text-[#36534c]">
-              LifeShelf keeps the small things visible
-              so you don't have to remember them.
-            </p>
-
-            <Link
-              to="/products/add"
-              className="
-                mt-5 inline-flex items-center gap-3
-                text-xs font-semibold
-                text-[#24594f]
-                transition
-                hover:gap-4
-              "
-            >
-              Add something new
-              <span>→</span>
-            </Link>
-
-          </div>
-
-        </section>
-
-
-        {/* EMPTY SHELF */}
-
-        {products.length === 0 && (
-
-          <section
-            className="
-              mt-7
-              border border-white/80
-              bg-white/55
-              p-10
-              text-center
-              shadow-[0_20px_60px_rgba(24,53,51,0.06)]
-              backdrop-blur-xl
-              md:p-14
-            "
-          >
-
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#e8f1ee]">
-
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6 text-[#24594f]"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <path d="M12 3v18" />
-                <path d="M5 12h14" />
-              </svg>
-
-            </div>
-
-            <h2 className="mt-6 text-xl font-medium tracking-[-0.025em] text-[#183533]">
-              Your shelf starts here.
-            </h2>
-
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#89918c]">
-              Keep your skincare, supplements,
-              hygiene products and everyday essentials
-              organized in one quiet place.
-            </p>
-
-            <Link
-              to="/products/add"
-              className="
-                mt-7
-                inline-flex
-                bg-[#24594f]
-                px-6 py-3
-                text-xs font-semibold
-                text-white
-                shadow-[0_10px_25px_rgba(36,89,79,0.18)]
-                transition
-                hover:-translate-y-0.5
-                hover:bg-[#1d4c43]
-              "
-            >
-              Add your first product
-            </Link>
-
-          </section>
-
-        )}
-
       </div>
+    </main>
+  )
+}
 
-    </div>
+function SummaryCard({
+  label,
+  value,
+  detail,
+  accent,
+}: {
+  label: string
+  value: string
+  detail: string
+  accent: 'sage' | 'gold' | 'rose' | 'cream'
+}) {
+  const accents = {
+    sage: 'bg-[#e8efe6]',
+    gold: 'bg-[#f3eddf]',
+    rose: 'bg-[#f5e9e2]',
+    cream: 'bg-[#eeeee6]',
+  }
+
+  return (
+    <article className="border border-[#e4e7df] bg-white/75 p-5 sm:p-6">
+      <div className={`mb-5 h-1 w-10 ${accents[accent]}`} />
+      <p className="text-xs text-[#89978b]">{label}</p>
+      <p className="mt-3 break-words text-3xl font-light tracking-tight text-[#183533]">
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-[#89978b]">{detail}</p>
+    </article>
   )
 }
 

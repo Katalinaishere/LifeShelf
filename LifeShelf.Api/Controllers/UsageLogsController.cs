@@ -1,11 +1,15 @@
+
+using System.Security.Claims;
 using LifeShelf.Api.DTOs;
 using LifeShelf.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LifeShelf.Api.Controllers;
 
 [ApiController]
 [Route("api/usage-logs")]
+[Authorize]
 public class UsageLogsController : ControllerBase
 {
     private readonly IUsageLogService _usageLogService;
@@ -15,13 +19,31 @@ public class UsageLogsController : ControllerBase
         _usageLogService = usageLogService;
     }
 
+    private string? GetCurrentUserId()
+    {
+        return User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+    }
+
     // GET: api/usage-logs/product/1
     [HttpGet("product/{productId}")]
-    public async Task<ActionResult<List<UsageLogResponseDto>>> GetLogsForProduct(
-        int productId)
+    public async Task<ActionResult<List<UsageLogResponseDto>>>
+        GetLogsForProduct(int productId)
     {
+        var userId = GetCurrentUserId();
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         var logs = await _usageLogService
-            .GetLogsForProductAsync(productId);
+            .GetLogsForProductAsync(productId, userId);
+
+        if (logs == null)
+        {
+            return NotFound();
+        }
 
         return Ok(logs);
     }
@@ -30,7 +52,15 @@ public class UsageLogsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<UsageLogResponseDto>> GetLog(int id)
     {
-        var log = await _usageLogService.GetLogByIdAsync(id);
+        var userId = GetCurrentUserId();
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
+        var log = await _usageLogService
+            .GetLogByIdAsync(id, userId);
 
         if (log == null)
         {
@@ -43,10 +73,17 @@ public class UsageLogsController : ControllerBase
     // POST: api/usage-logs
     [HttpPost]
     public async Task<ActionResult<UsageLogResponseDto>> CreateUsageLog(
-        CreateUsageLogDto dto)
+        [FromBody] CreateUsageLogDto dto)
     {
+        var userId = GetCurrentUserId();
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         var createdLog = await _usageLogService
-            .CreateUsageLogAsync(dto);
+            .CreateUsageLogAsync(dto, userId);
 
         if (createdLog == null)
         {
@@ -63,8 +100,15 @@ public class UsageLogsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteUsageLog(int id)
     {
+        var userId = GetCurrentUserId();
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         var deleted = await _usageLogService
-            .DeleteUsageLogAsync(id);
+            .DeleteUsageLogAsync(id, userId);
 
         if (!deleted)
         {
