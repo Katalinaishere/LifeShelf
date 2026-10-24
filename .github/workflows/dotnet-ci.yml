@@ -1,4 +1,4 @@
-```yaml
+
 name: LifeShelf API CI
 
 on:
@@ -51,4 +51,3 @@ jobs:
             ghcr.io/katalinaishere/lifeshelf-api:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/Katalinaishere/LifeShelf
-```
