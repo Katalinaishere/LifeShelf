@@ -148,14 +148,13 @@ namespace LifeShelf.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("UserId")
-                        .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("LifeShelf.Api.Models.UsageLog", b =>
@@ -186,7 +185,7 @@ namespace LifeShelf.Api.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("UsageLogs", (string)null);
+                    b.ToTable("UsageLogs");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -327,8 +326,7 @@ namespace LifeShelf.Api.Migrations
                     b.HasOne("LifeShelf.Api.Models.ApplicationUser", "User")
                         .WithMany("Products")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("User");
                 });
