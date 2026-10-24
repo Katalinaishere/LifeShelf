@@ -1,5 +1,4 @@
 
-
 name: LifeShelf API CI
 
 on:
@@ -29,3 +28,7 @@ jobs:
 
       - name: Run automated tests
         run: dotnet test LifeShelf.Api.Tests/LifeShelf.Api.Tests.csproj --configuration Release
+
+      - name: Build Docker image
+        run: docker build -t lifeshelf-api:ci ./LifeShelf.Api
+
